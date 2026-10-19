@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 huier
+# SPDX-License-Identifier: LGPL-3.0-or-later
+name: Smoke reporter Linux validation
+
+on:
+  push:
+    branches: [ci/smoke-report-linux-validation]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Check out the exact PR 2240 commit
+        run: |
+          git init --quiet .
+          git remote add origin https://github.com/huier5635-cmd/linyaps.git
+          git fetch --no-tags --depth=1 origin 2b0a275d4709b234710e007a841c22187d43c0b6
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = 2b0a275d4709b234710e007a841c22187d43c0b6
+          git fetch --no-tags --depth=1 origin fcd650e8f7cc289ecb66392673edf7cec44a7df3
+      - name: Install the report's existing optional dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --index-url https://pypi.org/simple openpyxl==3.1.5 lxml==6.1.1
+          .venv/bin/python -c 'import platform, openpyxl, lxml.etree; print(platform.platform(), platform.python_version(), openpyxl.__version__, lxml.etree.LXML_VERSION)'
+      - name: Verify the six baseline regressions
+        run: |
+          .venv/bin/python - <<'PY'
+          from pathlib import Path
+          import os
+          import subprocess
+          import sys
+          source = Path("tools/test_linglong/reporter.py")
+          fixed = source.read_bytes()
+          original = subprocess.check_output(["git", "show", "fcd650e8f7cc289ecb66392673edf7cec44a7df3:tools/test_linglong/reporter.py"])
+          command = [sys.executable, "-m", "unittest", "discover", "-s", "tools/test_linglong/tests", "-p", "test_reporter_xml_chars.py", "-v"]
+          try:
+              source.write_bytes(original)
+              for backend, expected in [("True", "failures=6"), ("False", "errors=6")]:
+                  result = subprocess.run(command, env=dict(os.environ, OPENPYXL_LXML=backend), capture_output=True, text=True)
+                  output = result.stdout + result.stderr
+                  print("BASELINE OPENPYXL_LXML=" + backend)
+                  print(output)
+                  assert result.returncode != 0 and expected in output and "Ran 5 tests" in output
+          finally:
+              source.write_bytes(fixed)
+          assert source.read_bytes() == fixed
+          PY
+      - name: Test the repaired report with lxml
+        env:
+          OPENPYXL_LXML: "True"
+        run: .venv/bin/python -m unittest discover -s tools/test_linglong/tests -p test_reporter_xml_chars.py -v
+      - name: Test the repaired report with the standard XML writer
+        env:
+          OPENPYXL_LXML: "False"
+        run: .venv/bin/python -m unittest discover -s tools/test_linglong/tests -p test_reporter_xml_chars.py -v
