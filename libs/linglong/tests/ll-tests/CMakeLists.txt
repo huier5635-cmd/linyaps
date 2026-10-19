@@ -57,6 +57,7 @@ pfl_add_executable(
   src/linglong/package/version_extra_test.cpp
   src/linglong/package/version_test.cpp
   src/linglong/package/versionv2_test.cpp
+  src/linglong/repo/api_response_buffer_test.cpp
   src/linglong/repo/client_factory_test.cpp
   src/linglong/repo/config_test.cpp
   src/linglong/repo/migrate_test.cpp
